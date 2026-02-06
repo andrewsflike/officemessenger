@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 720" role="img" aria-labelledby="title desc">
+  <title id="title">Purpose Driver logo</title>
+  <desc id="desc">Yellow sun with a blue umbrella silhouette.</desc>
+  <circle cx="260" cy="260" r="200" fill="#F7D94C"/>
+  <path fill="#1276B9" d="M440 140c140-30 290-30 360-10-40 30-140 70-250 90-70 12-130 20-180 20l70-100z"/>
+  <path fill="#1276B9" d="M400 160c-60 70-130 110-200 120l-10-20c70-40 140-70 210-100z"/>
+  <path fill="#1276B9" d="M440 180c12 8 20 24 20 40v310c0 18-16 20-26 4L360 320l18-12 54 84V220c0-12-4-22-8-30l16-10z"/>
+  <path fill="#1276B9" d="M160 360c120 40 260 60 360 50l-10 30c-130 40-280 20-380-30l30-50z"/>
+  <path fill="#1276B9" d="M220 420c40 60 90 110 150 150l-20 14c-80-40-140-100-180-170l50 6z"/>
+  <path fill="#1276B9" d="M260 560l-40 20c-10 6-6 20 6 18l70-14-36-24z"/>
+</svg>
