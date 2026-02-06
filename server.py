@@ -22,6 +22,9 @@ def init_db():
     conn.commit()
     conn.close()
 
+# Initialize the SQLite DB at import time so gunicorn workers have tables ready.
+init_db()
+
 def get_messages():
     conn = sqlite3.connect('messenger.db')
     c = conn.cursor()
@@ -98,8 +101,6 @@ def handle_message(data):
     emit('new_message', message, broadcast=True)
 
 if __name__ == '__main__':
-    init_db()
     import os
     port = int(os.environ.get('PORT', 5000))
     socketio.run(app, host='0.0.0.0', port=port, debug=False)
-
