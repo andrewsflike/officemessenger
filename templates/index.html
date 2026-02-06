@@ -1,11 +1,12 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Office Messenger</title>
+    <title>Purpose Driver Messenger</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #f5f5f5; }
         #header { background: #2c3e50; color: white; padding: 15px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        #logo { height: 60px; width: auto; display: inline-block; vertical-align: middle; }
         #container { display: flex; height: calc(100vh - 70px); }
         #sidebar { width: 260px; background: #ecf0f1; padding: 15px; overflow-y: auto; border-right: 1px solid #bdc3c7; }
         #chat { flex: 1; display: flex; flex-direction: column; background: white; }
@@ -24,29 +25,36 @@
         .system-message { color: #95a5a6; font-style: italic; text-align: center; padding: 10px; }
         .current-user { background: #d5f5e3 !important; }
         .active-private { border-left: 4px solid #3498db; }
-        .mode-toggle { display: flex; gap: 10px; margin: 10px 0 15px; }
-        .mode-toggle button { flex: 1; }
         #chat-title { padding: 10px 20px; border-bottom: 1px solid #e9ecef; background: #f8f9fa; font-weight: bold; color: #2c3e50; }
+        .chat-list { margin-top: 15px; }
+        .chat-item { display: flex; justify-content: space-between; align-items: center; }
+        .chat-label { display: inline-flex; align-items: center; gap: 8px; }
+        .unread-dot { width: 8px; height: 8px; border-radius: 50%; background: #e74c3c; display: none; }
+        .has-unread .unread-dot { display: inline-block; }
+        .has-unread { animation: blink 1s ease-in-out infinite; }
+        @keyframes blink {
+            0%, 100% { background: white; }
+            50% { background: #fff4f4; }
+        }
     </style>
 </head>
 <body>
     <div id="header">
-        <h1>Purpose Driver Chat</h1>
+        <h1>
+            <img id="logo" src="{{ url_for('static', filename='logo.svg') }}" alt="Purpose Driver logo">
+        </h1>
     </div>
     <div id="container">
         <div id="sidebar">
             <h3>Online Users</h3>
-            <div class="mode-toggle">
-                <button id="group-mode" onclick="switchToGroup()">Group</button>
-                <button id="private-mode" onclick="switchToPrivate()" disabled>Private</button>
-            </div>
+            <ul id="chat-tabs" class="user-list chat-list"></ul>
             <ul id="users" class="user-list"></ul>
         </div>
         <div id="chat">
-            <div id="chat-title">Group Chat</div>
+            <div id="chat-title">Select a chat</div>
             <div id="messages"></div>
             <div id="input-area">
-                <input type="text" id="message-input" placeholder="Type your message...">
+                <input type="text" id="message-input" placeholder="Select a chat to start messaging...">
                 <button onclick="sendMessage()">Send</button>
             </div>
         </div>
@@ -56,15 +64,15 @@
         const socket = io();
         const messagesDiv = document.getElementById('messages');
         const usersList = document.getElementById('users');
+        const chatTabsList = document.getElementById('chat-tabs');
         const messageInput = document.getElementById('message-input');
         const chatTitle = document.getElementById('chat-title');
-        const groupModeButton = document.getElementById('group-mode');
-        const privateModeButton = document.getElementById('private-mode');
         const sendButton = document.querySelector('#input-area button');
         let currentUserId = null;
-        let activeChat = { type: 'group', withUserId: null };
+        let activeChat = { type: null, withUserId: null };
         const messageStore = { group: [], private: {} };
         let currentUsers = [];
+        const unreadCounts = { group: 0, private: {} };
 
         // Set username on first load
         const username = localStorage.getItem('username') || prompt("Enter your name:") || "Anonymous";
@@ -82,6 +90,8 @@
             messageStore.group.push(message);
             if(activeChat.type === 'group') {
                 addMessage(message);
+            } else {
+                incrementUnread('group');
             }
         });
 
@@ -113,6 +123,8 @@
             messageStore.private[partnerId].push(message);
             if(activeChat.type === 'private' && activeChat.withUserId === partnerId) {
                 addMessage(message);
+            } else {
+                incrementUnread(partnerId);
             }
         });
 
@@ -180,7 +192,15 @@
             usersList.innerHTML = '';
             users.forEach(user => {
                 const li = document.createElement('li');
-                li.textContent = user.name;
+                li.classList.add('chat-item');
+                li.dataset.id = user.id;
+                const label = document.createElement('span');
+                label.className = 'chat-label';
+                const dot = document.createElement('span');
+                dot.className = 'unread-dot';
+                label.appendChild(dot);
+                label.appendChild(document.createTextNode(user.name));
+                li.appendChild(label);
                 li.dataset.id = user.id;
                 if(user.id === currentUserId) {
                     li.classList.add('current-user');
@@ -188,6 +208,9 @@
                     li.addEventListener('click', () => openPrivateChat(user));
                     if(activeChat.type === 'private' && activeChat.withUserId === user.id) {
                         li.classList.add('active-private');
+                    }
+                    if(unreadCounts.private[user.id]) {
+                        li.classList.add('has-unread');
                     }
                 }
                 usersList.appendChild(li);
@@ -197,14 +220,13 @@
         function openPrivateChat(user) {
             activeChat = { type: 'private', withUserId: user.id };
             chatTitle.textContent = `Private Chat with ${user.name}`;
-            groupModeButton.disabled = false;
-            privateModeButton.disabled = true;
             if(!messageStore.private[user.id]) {
                 socket.emit('load_private_history', { withUserId: user.id });
                 renderMessages([]);
             } else {
                 renderMessages(messageStore.private[user.id]);
             }
+            clearUnread(user.id);
             updateUsers(currentUsers);
             toggleSendState();
         }
@@ -212,30 +234,70 @@
         function switchToGroup() {
             activeChat = { type: 'group', withUserId: null };
             chatTitle.textContent = 'Group Chat';
-            groupModeButton.disabled = true;
-            privateModeButton.disabled = false;
             renderMessages(messageStore.group);
+            clearUnread('group');
+            updateGroupTab();
             toggleSendState();
-        }
-
-        function switchToPrivate() {
-            if(activeChat.type === 'private' && activeChat.withUserId) {
-                return;
-            }
-            addSystemMessage('Select a user to start a private conversation.');
         }
 
         function toggleSendState() {
             const isPrivateReady = activeChat.type === 'private' && activeChat.withUserId;
-            sendButton.disabled = activeChat.type === 'private' && !isPrivateReady;
-            messageInput.placeholder = isPrivateReady ? 'Type your private message...' : 'Type your message...';
+            const isChatSelected = activeChat.type === 'group' || isPrivateReady;
+            sendButton.disabled = !isChatSelected;
+            messageInput.placeholder = isPrivateReady
+                ? 'Type your private message...'
+                : activeChat.type === 'group'
+                    ? 'Type your message...'
+                    : 'Select a chat to start messaging...';
+        }
+
+        function incrementUnread(chatKey) {
+            if(chatKey === 'group') {
+                unreadCounts.group += 1;
+                updateGroupTab();
+                return;
+            }
+            unreadCounts.private[chatKey] = (unreadCounts.private[chatKey] || 0) + 1;
+            updateUsers(currentUsers);
+        }
+
+        function clearUnread(chatKey) {
+            if(chatKey === 'group') {
+                unreadCounts.group = 0;
+                updateGroupTab();
+                return;
+            }
+            unreadCounts.private[chatKey] = 0;
+            updateUsers(currentUsers);
+        }
+
+        function updateGroupTab() {
+            chatTabsList.innerHTML = '';
+            const li = document.createElement('li');
+            li.className = 'chat-item';
+            if(activeChat.type === 'group') {
+                li.classList.add('active-private');
+            }
+            if(unreadCounts.group) {
+                li.classList.add('has-unread');
+            }
+            const label = document.createElement('span');
+            label.className = 'chat-label';
+            const dot = document.createElement('span');
+            dot.className = 'unread-dot';
+            label.appendChild(dot);
+            label.appendChild(document.createTextNode('Group Chat'));
+            li.appendChild(label);
+            li.addEventListener('click', () => switchToGroup());
+            chatTabsList.appendChild(li);
         }
 
         messageInput.addEventListener('keypress', (e) => {
             if(e.key === 'Enter') sendMessage();
         });
 
-        switchToGroup();
+        updateGroupTab();
+        toggleSendState();
     </script>
 </body>
 </html>
