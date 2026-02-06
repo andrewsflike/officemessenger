@@ -1,6 +1,3 @@
-import eventlet
-eventlet.monkey_patch()
-
 from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit
 import sqlite3
@@ -10,7 +7,8 @@ import os
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'office-messenger-secret')
-socketio = SocketIO(app, cors_allowed_origins="*")
+# Use threading mode for compatibility with modern Python runtimes on Render.
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 def init_db():
     conn = sqlite3.connect('messenger.db')
